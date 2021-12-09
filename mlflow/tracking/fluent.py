@@ -30,7 +30,7 @@ from mlflow.utils.autologging_utils import (
     AUTOLOGGING_INTEGRATIONS,
     autologging_is_disabled,
 )
-from mlflow.utils.databricks_utils import is_in_databricks_notebook, get_notebook_id
+from mlflow.utils.databricks_utils import get_job_id, is_in_databricks_job, is_in_databricks_notebook, get_notebook_id, get_job_name
 from mlflow.utils.import_hooks import register_post_import_hook
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID, MLFLOW_RUN_NAME
 from mlflow.utils.validation import _validate_run_id
@@ -277,13 +277,15 @@ def start_run(
         else:
             parent_run_id = None
 
-        exp_id_for_run = experiment_id if experiment_id is not None else _get_experiment_id()
+        exp_id_for_run = experiment_id if experiment_id is not None else _get_experiment_id(tags)
 
         user_specified_tags = deepcopy(tags) or {}
         if parent_run_id is not None:
             user_specified_tags[MLFLOW_PARENT_RUN_ID] = parent_run_id
         if run_name is not None:
             user_specified_tags[MLFLOW_RUN_NAME] = run_name
+        if is_in_databricks_job():
+            user_specified_tags["TODO_NON_WORKSPACE_CREATE_EXP"] = get_job_id()
 
         resolved_tags = context_registry.resolve_tags(user_specified_tags)
 
@@ -1320,7 +1322,7 @@ def _get_experiment_id_from_env():
     return env.get_env(_EXPERIMENT_ID_ENV_VAR)
 
 
-def _get_experiment_id():
+def _get_experiment_id(tags: Optional[Dict[str, Any]] = None):
     # TODO: Replace with None for 1.0, leaving for 0.9.1 release backcompat with existing servers
     deprecated_default_exp_id = "0"
 
@@ -1328,6 +1330,7 @@ def _get_experiment_id():
         _active_experiment_id
         or _get_experiment_id_from_env()
         or (is_in_databricks_notebook() and get_notebook_id())
+        or (is_in_databricks_job() and create_experiment(get_job_name(), None, tags))
     ) or deprecated_default_exp_id
 
 
